@@ -1,61 +1,69 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, View, StyleSheet } from 'react-native';
-import { List, Card, Badge, IconButton, Text, Searchbar } from 'react-native-paper';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { View, FlatList, StyleSheet, Alert } from 'react-native';
+import { Searchbar, List, Badge, Divider, ActivityIndicator, Text } from 'react-native-paper';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../services/firebase';
 
-const Dashboard = () => {
-  const [users, setUsers] = useState([]);
+export default function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
 
   const fetchUsers = async () => {
-    const functions = getFunctions();
-    const manageUser = httpsCallable(functions, 'manageUser');
-    const result = await manageUser({ action: 'list' });
-    setUsers(result.data);
+    setLoading(true);
+    try {
+      const manageUser = httpsCallable(functions, 'manageUser');
+      const result = await manageUser({ action: 'list' });
+      setUsers(result.data as any[]);
+      setFilteredUsers(result.data as any[]);
+    } catch (e) {
+      Alert.alert("Access Denied", "Only the admin account can view this data.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchUsers(); }, []);
 
+  const onSearch = (query: string) => {
+    setSearch(query);
+    const filtered = users.filter(u => u.email.toLowerCase().includes(query.toLowerCase()));
+    setFilteredUsers(filtered);
+  };
+
   return (
     <View style={styles.container}>
-      <Searchbar placeholder="Search Locas Users" value={search} onChangeText={setSearch} />
-      
-      <FlatList
-        data={users}
-        keyExtractor={(item) => item.uid}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
+      <Searchbar placeholder="Search Users" onChangeText={onSearch} value={search} style={styles.search} />
+      {loading ? <ActivityIndicator animating={true} style={{marginTop: 50}} /> : (
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={(item) => item.uid}
+          ItemSeparatorComponent={Divider}
+          renderItem={({ item }) => (
             <List.Item
               title={item.email}
-              description={`UID: ${item.uid}`}
+              description={`Pass: ${item.password} | Plan: ${item.customClaims?.plan || 'trial'}`}
               left={props => <List.Icon {...props} icon="account" />}
               right={() => (
-                <View style={styles.statusRow}>
-                  {item.disabled ? 
-                    <Badge style={{backgroundColor: 'red'}}>Blocked</Badge> : 
-                    <Badge style={{backgroundColor: 'green'}}>Active</Badge>
-                  }
-                  <IconButton icon="dots-vertical" onPress={() => {/* Open Action Menu */}} />
+                <View style={styles.statusBox}>
+                  <Text style={styles.deviceCount}>📱 {item.deviceCount}/5</Text>
+                  <Badge style={{ backgroundColor: item.disabled ? 'red' : 'green' }}>
+                    {item.disabled ? 'OFF' : 'ON'}
+                  </Badge>
                 </View>
               )}
             />
-            {/* Expanded section for Password/Devices/Plans */}
-            <View style={styles.detailBar}>
-               <Text variant="labelSmall">Plan: Yearly</Text>
-               <Text variant="labelSmall">Devices: 3/5</Text>
-            </View>
-          </Card>
-        )}
-      />
+          )}
+        />
+      )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10, backgroundColor: '#f5f5f5' },
-  card: { marginVertical: 5, borderRadius: 8 },
-  statusRow: { flexDirection: 'row', alignItems: 'center' },
-  detailBar: { flexDirection: 'row', justifyContent: 'space-around', paddingBottom: 10 }
+  container: { flex: 1, backgroundColor: '#fff' },
+  search: { margin: 10, borderRadius: 8 },
+  statusBox: { flexDirection: 'row', alignItems: 'center' },
+  deviceCount: { fontSize: 12, marginRight: 10, color: '#666' }
 });
-
-export default Dashboard;
